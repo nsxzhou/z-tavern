@@ -1,174 +1,141 @@
 # Repository Guidelines
 
-## 项目结构与架构设计
+## 项目总览
 
-### 分层架构原则
+- 服务定位：面向角色扮演体验的 Go 后端，提供会话管理、AI 回复、语音识别与语音合成能力。
+- 核心能力：Persona 校验与上下文管理、SSE 文本流式输出、语音 REST/WebSocket 闭环、可选 Ark 大模型与火山语音集成。
+- 当前状态：所有对话与语音数据存储于内存，适用于原型和前端联调；认证、持久化、分布式部署仍在规划阶段。
 
-项目采用严格的分层架构，各层职责明确分离：
+## 架构与分层
 
 ```
+cmd/api/            # 程序入口
+├── main.go         # 装配配置、服务与路由
+
 internal/
-├── model/          # 数据模型层
-│   ├── persona/   # 角色相关模型
-│   ├── chat/      # 聊天相关模型
-│   └── speech/    # 语音相关模型
-├── service/       # 业务逻辑层
-│   ├── ai/        # AI服务
-│   ├── chat/      # 聊天服务
-│   └── speech/    # 语音服务
-├── handler/       # HTTP处理层
-│   ├── persona/   # 角色处理器
-│   ├── chat/      # 聊天处理器
-│   ├── speech/    # 语音处理器
-│   ├── stream/    # 流式响应处理器
-│   └── router.go  # 路由组装
-├── middleware/    # 中间件层
-├── config/        # 配置管理
-└── pkg/
-    └── utils/     # 公共工具
+├── config/         # 配置加载与校验
+├── handler/        # HTTP 与 WebSocket 处理层
+│   ├── persona/    # 角色管理接口
+│   ├── chat/       # 会话与消息接口
+│   ├── speech/     # 语音 REST + WebSocket
+│   ├── stream/     # SSE 流式回复
+│   └── router.go   # 统一路由装配
+├── middleware/     # CORS、日志等通用中间件
+├── model/          # 数据模型（persona/chat/speech）
+└── service/        # 业务逻辑（ai/chat/speech）
+
+pkg/utils/          # SSE、响应封装等通用工具
+config.toml         # 示例配置（可选）
+docs/               # 深入文档，如接口对接手册
 ```
 
-### 各层职责说明
+### 依赖约束
 
-- **Model层**: 只定义数据结构，不包含业务逻辑
-- **Service层**: 纯业务逻辑，不包含HTTP处理代码
-- **Handler层**: HTTP请求响应处理，调用Service执行业务逻辑
-- **Middleware层**: 跨切面功能（CORS、认证、日志等）
-- **Utils层**: 可复用的工具函数
+1. 依赖方向保持 Handler → Service → Model，不允许反向引用。
+2. Service 层只关注业务流程，不出现 `http.ResponseWriter`、路由注册或 UI 语义。
+3. Model 层保持纯净，只定义结构体与常量；跨模块逻辑放在 Service。
+4. Handler 保持薄层，负责参数解析、错误映射、调用 Service。
 
-### 重要架构约定
+## 核心模块说明
 
-1. **严格的依赖方向**: Handler → Service → Model
-2. **Service层不得包含HTTP相关代码**: 如`http.ResponseWriter`、路由注册等
-3. **Model层保持纯净**: 只定义数据结构，不包含业务方法
-4. **Handler层保持薄层**: 只做请求响应转换，复杂逻辑下沉到Service
+- `internal/service/ai`：基于 CloudWeGo Eino 组装 Ark 对话链路，支持串流与非串流；`StreamingEnabled` 受 `ARK_STREAM` 控制。
+- `internal/service/chat`：内存态会话/消息存储，提供创建、写入与读取接口；错误集中在 `ErrPersonaRequired` 与 `ErrSessionNotFound`。
+- `internal/service/speech`：封装火山语音 ASR/TTS 的 REST 与缓冲区调用，HTTP 与 WebSocket 共享实现。
+- `internal/handler/stream`：包装 SSE 输出，处理 `start/delta/message/end/error` 事件并回写聊天记录；若 AI 未启用则路由直接返回 `503 ai streaming unavailable`。
+- `internal/handler/speech`：导出 `/transcribe`、`/synthesize` 系列端点、健康检查以及 `/ws/{sessionID}` WebSocket，支持带会话 ID 的路由变体。
 
-### 实时语音链路约定
+## 实时语音链路约定
 
-- 语音 REST 与 WebSocket 背后统一依赖 `internal/service/speech`，Handler 层只做参数拆装
-- `SpeechService` 接口需同时提供 `TranscribeAudio/TranscribeBuffer/SynthesizeSpeech/SynthesizeToBuffer`
-- WebSocket 处理器需要 `chat.Service` 与 persona store 以维持会话上下文；消息类型限定为 `audio/text/config`
-- 未配置语音或 AI 服务时，WebSocket 路由必须优雅降级为 501 或错误提示，避免前端阻塞
-- WebSocket 输出通过 `result` 事件描述 `asr`、`ai_delta`、`ai`、`tts` 等阶段，客户端需按 `type` 字段解析
+- REST 端点：
+  - `POST /api/speech/transcribe` 与 `POST /api/speech/transcribe/{sessionID}`（`multipart/form-data`）。
+  - `POST /api/speech/synthesize` 与 `POST /api/speech/synthesize/{sessionID}`（`application/json`）。
+  - `GET /api/speech/health` 返回 `{status:"healthy"}`。
+- WebSocket：`GET /api/speech/ws/{sessionID}` 在 AI、语音、聊天服务均启用时可用，否则返回 501。
+  - 入站消息类型：`audio`（Base64 音频分片）、`text`（纯文本）、`config`（动态开关/语言/音色）。
+  - 出站统一封装在 `result` 事件内，`data.type` 可为 `connected/asr/user/ai_delta/ai/tts/config`，错误通过 `Type:"error"` 发送。
+  - 服务端每 54 秒发送 Ping，客户端需响应 Pong 维持连接。
+- 参考文档详见 `docs/backend_api_frontend_usage.md`。
 
-## 开发规范
+## 配置清单
 
-### 代码组织原则
+### HTTP 服务
 
-- Go 模块位于 `github.com/zhouzirui/z-tavern/backend`
-- 入口 `cmd/api/main.go` 负责装配服务和启动HTTP服务器
-- 新功能按层次放置，确保职责单一
-- 公共配置集中在 `internal/config` 包
-- 使用依赖注入模式，避免全局变量
+| 环境变量 | 说明 | 默认值 |
+|----------|------|--------|
+| `PORT` | 监听端口，支持 `:8080` 或 `127.0.0.1:8080` | `:8080` |
 
-### 构建、测试与开发命令
+### Ark / AI
 
-- `go run ./cmd/api`：本地启动服务，默认监听 `:8080`
-- `go build ./cmd/api`：构建发布可执行文件
-- `go test ./...`：运行所有单元测试
-- `make build`：使用Makefile构建
-- `make test`：使用Makefile运行测试
-- `make lint`：代码检查
+| 环境变量 | 说明 | 默认值 |
+|----------|------|--------|
+| `ARK_API_KEY` | Ark API Key（或使用 AK/SK 组合） | `""` |
+| `ARK_ACCESS_KEY` / `ARK_SECRET_KEY` | Ark AK/SK | `""` |
+| `Model` | 默认模型 ID | `""` |
+| `ARK_BASE_URL` | Ark 接口地址 | `https://ark.cn-beijing.volces.com/api/v3` |
+| `ARK_REGION` | 区域 | `cn-beijing` |
+| `ARK_TEMPERATURE` / `ARK_TOP_P` | 采样参数，可选 | - |
+| `ARK_MAX_TOKENS` | 最大生成 Token，可选 | - |
+| `ARK_STREAM` | 是否启用 SSE 流式输出 | `true` |
 
-### 编码风格与命名约定
+AI 服务在满足 `Model` 与任一凭证组合（API Key 或 AK/SK）时启用，否则相关路由返回 `503 ai streaming unavailable`。
 
-- 使用 Go 默认格式，提交前执行 `go fmt ./...`
-- 导出标识符采用驼峰命名
-- 包级错误遵循 `ErrXYZ` 模式
-- 构造函数统一为 `New` 或 `NewType`
-- Service构造函数命名为 `NewService`
-- Handler构造函数命名为 `New`
+### 语音服务
 
-### 测试指南
+| 环境变量 | 说明 | 默认值 |
+|----------|------|--------|
+| `SPEECH_APP_ID` | 火山语音应用 ID | `""` |
+| `SPEECH_ACCESS_TOKEN` / `SPEECH_API_KEY` | 火山语音 Token；未提供时回退至 `ARK_API_KEY` | `""` |
+| `SPEECH_ACCESS_KEY` / `SPEECH_SECRET_KEY` | 火山语音 AK/SK；未提供时回退至 Ark AK/SK | `""` |
+| `SPEECH_BASE_URL` | 语音服务地址（REST） | `""` |
+| `SPEECH_REGION` | 区域 | `cn-beijing` |
+| `SPEECH_ASR_MODEL` | 识别模型 ID | `""` |
+| `SPEECH_ASR_LANGUAGE` | 识别语言 | `zh-CN` |
+| `SPEECH_TTS_VOICE` | 合成音色 | `""` |
+| `SPEECH_TTS_LANGUAGE` | 合成语言 | `zh-CN` |
+| `SPEECH_TTS_SPEED` | 合成语速 | `1.0` |
+| `SPEECH_TTS_VOLUME` | 合成音量 | `1.0` |
+| `SPEECH_TIMEOUT` | 调用超时时间（秒） | `30` |
 
-- 优先编写表驱动测试
-- Service层可独立测试，不依赖HTTP
-- Handler层使用 `httptest` 验证HTTP响应
-- 合并前运行 `go test ./... -race` 捕获并发问题
+当 `SPEECH_APP_ID` 与 Token 缺失时，语音 REST 将仍然暴露但内部服务为 `nil`，WebSocket 会退化到 `501 speech websocket not available`。
 
-## 新功能开发流程
+## 开发流程与规范
 
-### 1. 添加新业务功能
+1. **需求梳理**：确认改动落在哪一层，优先复用现有 Service 能力。
+2. **模型更新**：必要时在 `internal/model` 定义数据结构，保持纯粹的字段声明。
+3. **业务实现**：在对应 Service 注入依赖、编写逻辑，并补充测试（优先表驱动）。
+4. **接口接入**：Handler 只做参数解析与错误映射；新的 HTTP 路由通过 `RegisterRoutes` 注册并在 `router.go` 汇总。
+5. **配置与开关**：涉及外部依赖时更新 `internal/config` 与文档说明。
+6. **验证**：执行 `go test ./...`，必要时跑 `make lint`、`make race`。
+7. **文档**：更新 README、AGENTS 或 `docs/`，保持前后端协同信息一致。
 
-1. **定义Model**: 在 `internal/model/` 创建数据结构
-2. **实现Service**: 在 `internal/service/` 实现业务逻辑
-3. **创建Handler**: 在 `internal/handler/` 处理HTTP请求
-4. **注册路由**: 在相应handler中注册路由
-5. **更新Router**: 在 `router.go` 中组装新handler
+### 常用命令
 
-### 2. 添加新的HTTP端点
-
-```go
-// 1. 在handler包中实现
-func (h *Handler) HandleNewEndpoint(w http.ResponseWriter, r *http.Request) {
-    // HTTP请求处理逻辑
-    result, err := h.service.DoSomething(r.Context(), params)
-    if err != nil {
-        utils.RespondError(w, http.StatusInternalServerError, err.Error())
-        return
-    }
-    utils.RespondJSON(w, http.StatusOK, result)
-}
-
-// 2. 注册路由
-func (h *Handler) RegisterRoutes(r chi.Router) {
-    r.Post("/new-endpoint", h.HandleNewEndpoint)
-}
+```bash
+make run           # 启动开发服务（go run 包装）
+make build         # 构建可执行文件
+make test          # 运行全部测试
+make race          # 并发竞态检测
+make lint          # 代码静态检查
+make fmt           # gofmt + goimports
 ```
 
-### 3. 错误处理规范
+> 在沙盒环境下可使用 `GOCACHE=$(pwd)/.gocache go test ./...` 避免默认缓存路径写入失败。
 
-- Service层返回具体的业务错误
-- Handler层处理错误并返回适当的HTTP状态码
-- 使用 `pkg/utils` 中的响应工具函数
-- 记录详细错误日志用于调试
+## 提交与评审规范
 
-## 配置与环境
+- 提交信息遵循 Conventional Commits（如 `feat: ...`, `fix: ...`, `docs: ...`）。
+- PR 需要说明用户可见变更，并附上测试结果截图或命令输出。
+- 确保 CI（`make ci`）通过后再请求评审。
 
-### 环境变量配置
+## 架构演进方向
 
-核心配置由 `internal/config` 解析，支持的环境变量：
+- 引入持久化层（可能的 Repository 模式）以替代当前内存存储，支持多实例部署。
+- 增强认证、权限及速率限制中间件。
+- 优化语音链路：升级到火山引擎 V3 流式接口、统一编码格式。
+- 探索事件驱动或队列机制，为语音/AI 延迟任务提供缓冲。
 
-- `PORT`: 监听端口
-- `ARK_API_KEY`: AI服务密钥
-- `Model`: AI模型ID
-- 更多配置参考 `configs/README.md`
+## 更多资料
 
-### 部署说明
-
-- 使用 `make build` 构建生产版本
-- 支持Docker部署（参考Makefile）
-- 确保所有环境变量正确配置
-
-## 提交与拉取请求规范
-
-- 遵循 Conventional Commits 格式
-- PR需关联问题，描述用户可见变更
-- 附上测试证据（测试输出或功能截图）
-- CI全绿后再请求评审
-
-## 架构演进指导
-
-### 当前架构优势
-
-1. **清晰的分层**: 易于理解和维护
-2. **职责分离**: 每层只关注自己的责任
-3. **可测试性**: Service层可独立测试
-4. **可扩展性**: 容易添加新功能
-
-### 未来扩展方向
-
-- 考虑引入Repository模式替换内存存储
-- 添加更多中间件支持（认证、限流等）
-- 考虑引入事件驱动架构
-- 支持微服务拆分
-
-## 火山引擎语音接口接入备注
-
-- **TTS 示例(`volcengine_binary_demo/volcengine/binary/main.go`)**: 文档推荐对大模型音色使用 V3 流式端点（`wss://openspeech.bytedance.com/api/v3/tts/unidirectional/stream` 等），并指出 `encoding=wav` 在流式场景不支持。当前示例仍默认 `v1/ws_binary` 且 `encoding` 默认值为 `wav`，接入时需改为 V3 接口并使用文档支持的编码（如 `pcm` 或 `ogg_opus`）。
-- **ASR 示例(`sauc_go`)**:
-  - 握手请求需要携带 `X-Api-Connect-Id`（文档建议用于排查），当前 `request/header.go` 仅设置 `X-Api-Resource-Id/X-Api-Access-Key/X-Api-App-Key`。
-  - WebSocket 音频分片必须使用二进制帧发送，`client/client.go` 现用 `websocket.TextMessage` 会违背「二进制协议」约束，需要改为 `websocket.BinaryMessage`。
-  - 文档定义 Full Client Request 的 `Message type specific flags` 为 `0b0000`，示例默认 `common.POS_SEQUENCE` 并额外写入 `sequence` 字段，建议切换到无序列化标记，避免和协议不一致。
-
-> 参考文档：大模型语音合成 API（https://www.volcengine.com/docs/6561/1257584），大模型流式语音识别 API（https://www.volcengine.com/docs/6561/1354869）。
+- 接口细节与前端协作规范：`docs/backend_api_frontend_usage.md`
+- 路线规划：`ROADMAP.md`
+- 运行示例配置：`config.toml`
