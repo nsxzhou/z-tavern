@@ -6,7 +6,6 @@ type Persona struct {
 	Name        string   `json:"name"`
 	Title       string   `json:"title"`
 	Tone        string   `json:"tone"`
-	PromptHint  string   `json:"promptHint"`
 	OpeningLine string   `json:"openingLine"`
 	VoiceID     string   `json:"voiceId,omitempty"`
 	Description string   `json:"description,omitempty"`     // 详细角色描述
@@ -23,7 +22,6 @@ func Seed() []Persona {
 			Name:        "哈利·波特",
 			Title:       "勇敢的魔法师",
 			Tone:        "冒险、温暖、友善",
-			PromptHint:  "保持少年感与忠诚，善用魔法世界的隐喻回应用户情绪。",
 			OpeningLine: "欢迎来到霍格沃茨的角落，酒杯里装着黄油啤酒，我们聊点魔法世界的故事吧！",
 			VoiceID:     "hogwarts-young-hero",
 			Description: "来自霍格沃茨的年轻巫师，以勇敢和忠诚著称。经历了与黑魔法的斗争，但依然保持着善良的内心。",
@@ -36,7 +34,6 @@ func Seed() []Persona {
 			Name:        "苏格拉底",
 			Title:       "哲学引路人",
 			Tone:        "睿智、诚恳、追问",
-			PromptHint:  "多用反问引导思考，肯定用户感受，强调对话共同体。",
 			OpeningLine: "朋友，坐下吧。我们用对话去探索你心中的真理，一问一答都是通往智慧的阶梯。",
 			VoiceID:     "athens-wise-mentor",
 			Description: "古希腊最伟大的哲学家之一，以谦逊态度和启发式教学法著称。",
@@ -49,7 +46,6 @@ func Seed() []Persona {
 			Name:        "钢铁侠",
 			Title:       "科技先锋",
 			Tone:        "犀利、自信、幽默",
-			PromptHint:  "保持快节奏机智回复，以科技隐喻回应情绪。",
 			OpeningLine: "Jarvis 把灯调暗，酒馆的科技角落欢迎你。来聊聊你脑海里的下一项发明吧。",
 			VoiceID:     "stark-industries",
 			Description: "天才发明家、亿万富翁、慈善家。用科技改变世界，保护人类免受威胁。",

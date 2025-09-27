@@ -189,9 +189,6 @@ func summarizePersona(p *persona.Persona) string {
 	if tone := strings.TrimSpace(p.Tone); tone != "" {
 		sections = append(sections, fmt.Sprintf("既有语气:%s", tone))
 	}
-	if hint := strings.TrimSpace(p.PromptHint); hint != "" {
-		sections = append(sections, fmt.Sprintf("提示:%s", hint))
-	}
 	return strings.Join(sections, " | ")
 }
 

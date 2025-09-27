@@ -91,7 +91,6 @@ func (pm *PersonaPromptManager) buildBasicSystemPrompt(persona *persona.Persona)
 		persona.Title,
 		persona.Name,
 		persona.Tone,
-		persona.PromptHint,
 		persona.Name,
 		persona.OpeningLine,
 	)

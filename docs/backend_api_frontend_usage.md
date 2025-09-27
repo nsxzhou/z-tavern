@@ -46,7 +46,7 @@
 
 | 模型     | 关键字段 | 说明 |
 |----------|----------|------|
-| Persona  | `id`, `name`, `title`, `tone`, `promptHint`, `voiceId` | 角色元数据，位于 `internal/model/persona` |
+| Persona  | `id`, `name`, `title`, `tone`, `voiceId` | 角色元数据，位于 `internal/model/persona` |
 | Session  | `id`, `personaId`, `createdAt` | 会话信息，`POST /api/session` 创建 |
 | Message  | `id`, `sessionId`, `sender`, `content`, `emotion`, `createdAt` | 聊天记录，SSE/WebSocket 会自动写入 |
 | Emotion  | `emotion`, `scale`, `confidence`, `style` | 情绪分析结果，来自 `internal/service/emotion` |
