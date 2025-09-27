@@ -21,7 +21,7 @@ export const ChatTimeline: React.FC<ChatTimelineProps> = ({
   ttsPlayingMessageId,
 }) => {
   return (
-    <div className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-white/40 bg-white/40 p-5 shadow-inner dark:border-slate-700/40 dark:bg-slate-900/40">
+    <div className="flex-1 h-full min-h-0 space-y-4 overflow-y-auto rounded-2xl border border-white/40 bg-white/40 p-5 shadow-inner dark:border-slate-700/40 dark:bg-slate-900/40">
       {messages.length === 0 && !isStreaming && (
         <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-2 text-sm text-slate-400 dark:text-slate-500">
           <span role="img" aria-hidden>

@@ -37,7 +37,7 @@ const isPersona = (input: Partial<Persona>): input is Persona =>
       typeof input.title === 'string' &&
       typeof input.tone === 'string' &&
       typeof input.promptHint === 'string' &&
-      typeof input.openingLine === 'string',
+      (typeof input.openingLine === 'undefined' || typeof input.openingLine === 'string'),
   )
 
 const ensurePersonas = (payload: unknown): Persona[] => {

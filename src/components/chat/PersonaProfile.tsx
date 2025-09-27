@@ -1,14 +1,14 @@
 import type { Persona } from '../../api'
-import { createPersonaFilterTags, getPersonaInitials, getPersonaMood, getPersonaPrompts } from '../../utils/persona'
+import { createPersonaFilterTags, getPersonaInitials, getPersonaPrompts } from '../../utils/persona'
 
 interface PersonaProfileProps {
   persona: Persona
 }
 
 export const PersonaProfile: React.FC<PersonaProfileProps> = ({ persona }) => {
-  const mood = getPersonaMood(persona)
   const prompts = getPersonaPrompts(persona)
   const tags = createPersonaFilterTags([persona])
+  const openingLine = persona.openingLine?.trim() || '欢迎来到 Z Tavern，开始对话吧。'
 
   return (
     <aside className="glass-panel flex h-full min-h-[560px] w-full max-w-sm flex-col gap-6 p-6 animate-glass-morph">
@@ -55,57 +55,21 @@ export const PersonaProfile: React.FC<PersonaProfileProps> = ({ persona }) => {
             开场白
           </p>
           <p className="leading-relaxed text-ztavern-text-light dark:text-ztavern-text-dark">
-            {persona.openingLine}
+            {openingLine}
           </p>
         </div>
       </div>
 
       {/* 详细信息网格 */}
       <div className="grid gap-4 text-sm flex-1">
-        {/* 情绪状态 */}
-        <div className="glass-panel rounded-2xl p-4 flex items-center justify-between backdrop-blur-glass backdrop-saturate-180 backdrop-brightness-108 hover:scale-[1.02] transition-transform duration-200">
-          <div className="flex-1">
-            <p className="text-xs uppercase tracking-widest text-ztavern-text-secondary-light dark:text-ztavern-text-secondary-dark mb-1">
-              情绪状态
-            </p>
-            <p className="text-sm font-medium text-ztavern-text-light dark:text-ztavern-text-dark">
-              {mood.text}
-            </p>
-          </div>
-
-          {/* 情绪指示器 */}
-          <div className="relative">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full glass-strong backdrop-blur-strong backdrop-saturate-220 backdrop-brightness-115 shadow-glass-light dark:shadow-glass-dark">
-              {/* 动态进度环 */}
-              <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 48 48">
-                <circle
-                  cx="24"
-                  cy="24"
-                  r="20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-ztavern-muted-light/30 dark:text-ztavern-muted-dark/30"
-                />
-                <circle
-                  cx="24"
-                  cy="24"
-                  r="20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeDasharray={`${2 * Math.PI * 20}`}
-                  strokeDashoffset={`${2 * Math.PI * 20 * (1 - mood.level)}`}
-                  className="text-ztavern-accent-light dark:text-ztavern-accent-dark transition-all duration-1000"
-                  strokeLinecap="round"
-                />
-              </svg>
-
-              <span className="relative text-xs font-semibold text-ztavern-accent-light dark:text-ztavern-accent-dark">
-                {(mood.level * 100).toFixed(0)}%
-              </span>
-            </div>
-          </div>
+        {/* 角色提示 */}
+        <div className="glass-panel rounded-2xl p-4 backdrop-blur-glass backdrop-saturate-180 backdrop-brightness-108">
+          <p className="text-xs uppercase tracking-widest text-ztavern-text-secondary-light dark:text-ztavern-text-secondary-dark mb-2">
+            角色提示
+          </p>
+          <p className="text-sm leading-relaxed text-ztavern-text-light dark:text-ztavern-text-dark">
+            {persona.promptHint || '该角色暂无额外提示信息。'}
+          </p>
         </div>
 
         {/* 风格标签 */}

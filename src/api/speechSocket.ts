@@ -54,6 +54,7 @@ const INFO_EVENT_TYPES: readonly SpeechSocketInfoEventType[] = [
   'ai_delta',
   'ai',
   'tts',
+  'emotion',
 ] as const
 
 const isInfoEventType = (value?: string): value is SpeechSocketInfoEventType =>

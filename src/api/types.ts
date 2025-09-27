@@ -4,20 +4,10 @@ export interface Persona {
   title: string
   tone: string
   promptHint: string
-  openingLine: string
-  intro?: string
-  initials?: string
-  avatar?: string
+  openingLine?: string
   voiceId?: string
-  description?: string
-  background?: string
   traits?: string[]
-  style?: string[]
-  prompts?: string[]
-  samplePrompts?: string[]
   expertise?: string[]
-  mood?: number
-  moodText?: string
 }
 
 export interface Session {
@@ -45,7 +35,6 @@ export interface SendMessageRequest {
   sessionId: string
   sender: MessageSender
   content: string
-  emotion?: string
 }
 
 export interface MessageQueuedResponse {
@@ -73,6 +62,9 @@ export interface TTSRequest {
   volume?: number
   format?: string
   language?: string
+  emotion?: string
+  emotionScale?: number
+  enableEmotion?: boolean
 }
 
 export interface TTSResponse {
@@ -85,12 +77,23 @@ export interface TTSResponse {
 }
 
 export interface StreamEvent {
-  event: 'start' | 'delta' | 'message' | 'end' | 'heartbeat' | 'error' | 'status'
+  event:
+    | 'start'
+    | 'delta'
+    | 'message'
+    | 'end'
+    | 'heartbeat'
+    | 'error'
+    | 'status'
+    | 'emotion'
   content?: string
   message?: string
   sessionId?: string
   finished?: boolean
   error?: string
+  emotion?: string
+  emotionScale?: number
+  emotionConfidence?: number
 }
 
 export interface SpeechHealthResponse {
@@ -101,7 +104,8 @@ export interface SpeechHealthResponse {
 export type SpeechSocketOutgoingMessage =
   | {
       type: 'config'
-      sessionId?: string
+      sessionId: string
+      timestamp: number
       data: {
         personaId?: string
         language?: string
@@ -113,7 +117,8 @@ export type SpeechSocketOutgoingMessage =
     }
   | {
       type: 'audio'
-      sessionId?: string
+      sessionId: string
+      timestamp: number
       data: {
         audioData: string
         format?: string
@@ -124,7 +129,8 @@ export type SpeechSocketOutgoingMessage =
     }
   | {
       type: 'text'
-      sessionId?: string
+      sessionId: string
+      timestamp: number
       data: {
         text: string
         isFinal?: boolean
@@ -132,6 +138,8 @@ export type SpeechSocketOutgoingMessage =
     }
   | {
       type: 'pong'
+      sessionId: string
+      timestamp: number
     }
 
 export type SpeechSocketInfoEventType =
@@ -142,6 +150,7 @@ export type SpeechSocketInfoEventType =
   | 'ai_delta'
   | 'ai'
   | 'tts'
+  | 'emotion'
 
 export interface SpeechSocketInfoPayload {
   type: SpeechSocketInfoEventType
@@ -151,6 +160,10 @@ export interface SpeechSocketInfoPayload {
   audioData?: string
   audio?: string
   format?: string
+  emotion?: string
+  emotionScale?: number
+  scale?: number
+  emotionConfidence?: number
   [key: string]: unknown
 }
 

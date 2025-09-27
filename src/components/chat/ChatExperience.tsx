@@ -67,7 +67,7 @@ export const ChatExperience: React.FC = () => {
   }
 
   return (
-    <section className="grid gap-6 lg:grid-cols-[320px,1fr,320px]">
+    <section className="grid h-full min-h-0 gap-6 lg:grid-cols-[320px,1fr,320px]">
       <PersonaSidebar
         personas={personas}
         activePersonaId={activePersona.id}
@@ -80,12 +80,17 @@ export const ChatExperience: React.FC = () => {
         isLoading={loading}
       />
 
-      <div className="flex min-h-[560px] flex-col gap-5">
+      <div className="flex flex-1 min-h-0 flex-col gap-5 overflow-hidden h-full">
         {error && (
           <div className="rounded-2xl border border-amber-300/60 bg-amber-100/60 px-4 py-2 text-xs text-amber-600 shadow-inner dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-200">
             {error}
           </div>
         )}
+        {/* {activeConversation?.session && (
+          <div className="rounded-2xl border border-sky-300/60 bg-sky-100/60 px-4 py-2 text-xs text-sky-700 shadow-inner dark:border-sky-500/50 dark:bg-sky-500/10 dark:text-sky-200">
+            提示：切换角色后无需等待声线同步，使用当前会话调用语音合成即可自动匹配角色音色。若返回 404 或 400，请检查会话是否仍然有效且角色绑定是否正确。
+          </div>
+        )} */}
         <ChatTimeline
           persona={activePersona}
           messages={activeConversation?.messages ?? []}

@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { Persona } from '../../api'
-import { getPersonaInitials, getPersonaMood } from '../../utils/persona'
+import { getPersonaInitials } from '../../utils/persona'
 
 interface PersonaSidebarProps {
   personas: Persona[]
@@ -34,7 +34,6 @@ export const PersonaSidebar: React.FC<PersonaSidebarProps> = ({
         persona.title,
         persona.tone,
         ...(persona.traits ?? []),
-        ...(persona.style ?? []),
         ...(persona.expertise ?? []),
       ]
       return fields.some((field) => field?.toLowerCase().includes(keyword))
@@ -106,7 +105,6 @@ export const PersonaSidebar: React.FC<PersonaSidebarProps> = ({
           {filteredPersonas.map((persona) => {
             const isActive = persona.id === activePersonaId
             const initials = getPersonaInitials(persona)
-            const mood = getPersonaMood(persona)
             return (
               <button
                 key={persona.id}
@@ -127,12 +125,6 @@ export const PersonaSidebar: React.FC<PersonaSidebarProps> = ({
                     <strong className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                       {persona.name}
                     </strong>
-                    {persona.mood !== undefined && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/50 bg-emerald-100/50 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                        {(mood.level * 100).toFixed(0)}%
-                      </span>
-                    )}
                   </span>
                   <span className="mt-1 block text-[12px] text-slate-500 dark:text-slate-400">
                     {persona.tone || persona.title}

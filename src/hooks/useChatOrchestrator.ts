@@ -10,6 +10,7 @@ import {
   type SpeechSocketOutgoingMessage,
   type SpeechSocketConnection,
   type StreamEvent,
+  type TTSRequest,
 } from "../api";
 import { createPersonaFilterTags, getPersonaPrompts } from "../utils/persona";
 
@@ -17,11 +18,18 @@ export interface ConversationState {
   session?: Session;
   messages: ConversationMessage[];
   isStreaming: boolean;
+  lastEmotion?: string;
+  lastEmotionScale?: number;
+  lastEmotionConfidence?: number;
 }
 
 type ConversationMap = Record<string, ConversationState>;
 
-type ConversationMessage = Message & { localId: string };
+type ConversationMessage = Message & {
+  localId: string;
+  emotionScale?: number;
+  emotionConfidence?: number;
+};
 
 type VoiceState =
   | "idle"
@@ -30,6 +38,21 @@ type VoiceState =
   | "streaming"
   | "transcribing"
   | "error";
+
+type SpeechSocketOutgoingPayload =
+  | ({ sessionId?: string } & Omit<
+      Extract<SpeechSocketOutgoingMessage, { type: "config" }>,
+      "sessionId" | "timestamp"
+    >)
+  | ({ sessionId?: string } & Omit<
+      Extract<SpeechSocketOutgoingMessage, { type: "audio" }>,
+      "sessionId" | "timestamp"
+    >)
+  | ({ sessionId?: string } & Omit<
+      Extract<SpeechSocketOutgoingMessage, { type: "text" }>,
+      "sessionId" | "timestamp"
+    >)
+  | ({ type: "pong"; sessionId?: string });
 
 type ActiveStream = {
   source: EventSource;
@@ -184,6 +207,9 @@ const createInitialConversations = (personas: Persona[]): ConversationMap => {
     const localId = `${persona.id}-intro`;
     acc[persona.id] = {
       isStreaming: false,
+      lastEmotion: undefined,
+      lastEmotionScale: undefined,
+      lastEmotionConfidence: undefined,
       messages: [
         {
           id: localId,
@@ -302,6 +328,9 @@ export const useChatOrchestrator = () => {
           messages: [],
           isStreaming: false,
           session: undefined,
+          lastEmotion: undefined,
+          lastEmotionScale: undefined,
+          lastEmotionConfidence: undefined,
         };
         const next: ConversationState = {
           ...existing,
@@ -353,6 +382,9 @@ export const useChatOrchestrator = () => {
           messages: [],
           isStreaming: false,
           session: undefined,
+          lastEmotion: undefined,
+          lastEmotionScale: undefined,
+          lastEmotionConfidence: undefined,
         };
         return { ...prev, [personaId]: { ...existing, ...partial } };
       });
@@ -405,7 +437,7 @@ export const useChatOrchestrator = () => {
   );
 
   const sendSpeechMessage = useCallback(
-    (payload: SpeechSocketOutgoingMessage) => {
+    (payload: SpeechSocketOutgoingPayload) => {
       if (speechModeRef.current !== "ws") return;
       const connection = speechSocketRef.current;
       const readyState = connection?.readyState();
@@ -419,7 +451,55 @@ export const useChatOrchestrator = () => {
         }
         return;
       }
-      connection.send(payload);
+
+      const sessionId = payload.sessionId ?? speechSessionIdRef.current;
+      if (!sessionId) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[useChatOrchestrator] missing session id for WS payload", {
+            payloadType: payload.type,
+          });
+        }
+        return;
+      }
+
+      const timestamp = Date.now();
+      let message: SpeechSocketOutgoingMessage;
+      switch (payload.type) {
+        case "config":
+          message = {
+            type: "config",
+            sessionId,
+            timestamp,
+            data: payload.data,
+          };
+          break;
+        case "audio":
+          message = {
+            type: "audio",
+            sessionId,
+            timestamp,
+            data: payload.data,
+          };
+          break;
+        case "text":
+          message = {
+            type: "text",
+            sessionId,
+            timestamp,
+            data: payload.data,
+          };
+          break;
+        case "pong":
+        default:
+          message = {
+            type: "pong",
+            sessionId,
+            timestamp,
+          };
+          break;
+      }
+
+      connection.send(message);
     },
     []
   );
@@ -435,7 +515,7 @@ export const useChatOrchestrator = () => {
           : null;
         const audioData = wavBuffer ? arrayBufferToBase64(wavBuffer) : "";
         const chunkIndex = speechChunkIndexRef.current++;
-        const payload: SpeechSocketOutgoingMessage = {
+        const payload: SpeechSocketOutgoingPayload = {
           type: "audio",
           sessionId,
           data: {
@@ -647,6 +727,52 @@ export const useChatOrchestrator = () => {
       const payload = message;
       const data = payload.data ?? {};
 
+      const normalizeEmotion = (value: unknown): string | undefined =>
+        typeof value === "string" && value.trim().length > 0
+          ? value.trim()
+          : undefined;
+      const normalizeEmotionScale = (value: unknown): number | undefined =>
+        typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+      const applyEmotionUpdate = (
+        emotionValue?: unknown,
+        scaleValue?: unknown,
+        confidenceValue?: unknown
+      ) => {
+        const emotion = normalizeEmotion(emotionValue);
+        const scale = normalizeEmotionScale(scaleValue);
+        const confidence =
+          typeof confidenceValue === "number" && Number.isFinite(confidenceValue)
+            ? Math.max(0, Math.min(1, confidenceValue))
+            : undefined;
+        if (!emotion && scale === undefined && confidence === undefined) return;
+        const snapshot = conversationsRef.current[persona.id];
+        const nextEmotion = emotion ?? snapshot?.lastEmotion;
+        const nextScale = scale ?? snapshot?.lastEmotionScale;
+        const nextConfidence =
+          confidence ?? snapshot?.lastEmotionConfidence;
+        updateConversation(persona.id, {
+          lastEmotion: nextEmotion,
+          lastEmotionScale: nextScale,
+          lastEmotionConfidence: nextConfidence,
+        });
+        const messageLocalId =
+          speechAssistantMessageRef.current[persona.id] ??
+          streamsRef.current[persona.id]?.messageLocalId;
+        if (messageLocalId) {
+          mutateMessage(persona.id, messageLocalId, (prev) => ({
+            ...prev,
+            emotion: nextEmotion ?? prev.emotion,
+            emotionScale:
+              nextScale !== undefined ? nextScale : prev.emotionScale,
+            emotionConfidence:
+              nextConfidence !== undefined
+                ? nextConfidence
+                : prev.emotionConfidence,
+          }));
+        }
+      };
+
       if (process.env.NODE_ENV !== "production") {
         console.debug("[useChatOrchestrator] speech socket message", {
           eventType: data.type,
@@ -742,6 +868,14 @@ export const useChatOrchestrator = () => {
           }
           break;
         }
+        case "emotion": {
+          applyEmotionUpdate(
+            data.emotion,
+            data.emotionScale ?? data.scale,
+            data.emotionConfidence ?? data.confidence,
+          );
+          break;
+        }
         case "tts": {
           const base64Audio =
             typeof data.audioData === "string" && data.audioData.length > 0
@@ -785,6 +919,11 @@ export const useChatOrchestrator = () => {
               );
             }
           }
+          applyEmotionUpdate(
+            data.emotion,
+            data.emotionScale ?? data.scale,
+            data.emotionConfidence ?? data.confidence,
+          );
           break;
         }
         default:
@@ -800,6 +939,7 @@ export const useChatOrchestrator = () => {
       setSpeechStatusMessage,
       setSpeechStatusTone,
       setVoiceState,
+      updateConversation,
     ]
   );
 
@@ -899,7 +1039,7 @@ export const useChatOrchestrator = () => {
         speechModeRef.current = "ws";
         setSpeechStatusMessage("语音服务已连接");
         setSpeechStatusTone("info");
-        readyConnection.send({
+        sendSpeechMessage({
           type: "config",
           sessionId: session.id,
           data: {
@@ -927,6 +1067,7 @@ export const useChatOrchestrator = () => {
     [
       closeSpeechSocket,
       handleSpeechSocketMessage,
+      sendSpeechMessage,
       setSpeechStatusMessage,
       setSpeechStatusTone,
       setVoiceState,
@@ -1056,6 +1197,85 @@ export const useChatOrchestrator = () => {
           if (messageId) {
             updateConversation(persona.id, { isStreaming: false });
             closeStream(persona.id);
+          }
+          break;
+        }
+        case "emotion": {
+          const parsePayload = (value?: string) => {
+            if (!value) return null;
+            try {
+              const parsed = JSON.parse(value) as {
+                emotion?: unknown;
+                scale?: unknown;
+                emotionScale?: unknown;
+                confidence?: unknown;
+                emotionConfidence?: unknown;
+              } | null;
+              return parsed && typeof parsed === "object" ? parsed : null;
+            } catch (error) {
+              if (process.env.NODE_ENV !== "production") {
+                console.warn(
+                  "[useChatOrchestrator] failed to parse emotion payload",
+                  error,
+                  value
+                );
+              }
+              return null;
+            }
+          };
+
+          const payload =
+            parsePayload(event.content) ?? parsePayload(event.message) ?? null;
+
+          const rawEmotion =
+            (payload?.emotion ?? event.emotion) as unknown | undefined;
+          const rawScale =
+            (payload?.emotionScale ?? payload?.scale ?? event.emotionScale) as
+              | unknown
+              | undefined;
+          const rawConfidence =
+            (payload?.confidence ?? payload?.emotionConfidence ?? event.emotionConfidence) as
+              | unknown
+              | undefined;
+
+          const emotion =
+            typeof rawEmotion === "string" && rawEmotion.trim().length > 0
+              ? rawEmotion.trim()
+              : undefined;
+          const scale =
+            typeof rawScale === "number" && Number.isFinite(rawScale)
+              ? rawScale
+              : undefined;
+          const confidence =
+            typeof rawConfidence === "number" && Number.isFinite(rawConfidence)
+              ? Math.max(0, Math.min(1, rawConfidence))
+              : undefined;
+
+          if (emotion || scale !== undefined || confidence !== undefined) {
+            const conversationSnapshot = conversationsRef.current[persona.id];
+            const nextEmotion = emotion ?? conversationSnapshot?.lastEmotion;
+            const nextScale =
+              scale ?? conversationSnapshot?.lastEmotionScale;
+            const nextConfidence =
+              confidence ?? conversationSnapshot?.lastEmotionConfidence;
+            updateConversation(persona.id, {
+              lastEmotion: nextEmotion,
+              lastEmotionScale: nextScale,
+              lastEmotionConfidence: nextConfidence,
+            });
+            const messageId = active.messageLocalId;
+            if (messageId) {
+              mutateMessage(persona.id, messageId, (prev) => ({
+                ...prev,
+                emotion: nextEmotion ?? prev.emotion,
+                emotionScale:
+                  nextScale !== undefined ? nextScale : prev.emotionScale,
+                emotionConfidence:
+                  nextConfidence !== undefined
+                    ? nextConfidence
+                    : prev.emotionConfidence,
+              }));
+            }
           }
           break;
         }
@@ -1439,12 +1659,32 @@ export const useChatOrchestrator = () => {
       if (!audioUrl) {
         setTtsLoadingMessageId(messageLocalId);
         try {
+          const emotion = message.emotion ?? conversation.lastEmotion;
+          const rawEmotionScale =
+            message.emotionScale ?? conversation.lastEmotionScale;
+          const normalizedEmotion =
+            typeof emotion === "string" && emotion.trim().length > 0
+              ? emotion.trim()
+              : undefined;
+          const normalizedEmotionScale =
+            typeof rawEmotionScale === "number" && Number.isFinite(rawEmotionScale)
+              ? Math.max(1, Math.min(5, rawEmotionScale))
+              : undefined;
+
+          const payload: TTSRequest = {
+            text: message.content,
+          };
+          if (normalizedEmotion) {
+            payload.emotion = normalizedEmotion;
+            if (normalizedEmotionScale !== undefined) {
+              payload.emotionScale = normalizedEmotionScale;
+            }
+            payload.enableEmotion = true;
+          }
+
           const response = await apiClient.synthesizeForSession(
             conversation.session.id,
-            {
-              sessionId: conversation.session.id,
-              text: message.content,
-            }
+            payload
           );
           if (response instanceof Blob) {
             audioUrl = URL.createObjectURL(response);
