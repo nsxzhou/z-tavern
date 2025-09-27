@@ -34,10 +34,10 @@ export default {
       },
       boxShadow: {
         // Liquid Glass 阴影系统 - 优化版
-        'glass-light': '0 8px 32px -8px rgba(0, 0, 0, 0.08), 0 4px 16px -4px rgba(0, 0, 0, 0.04)',
-        'glass-dark': '0 8px 32px -8px rgba(0, 0, 0, 0.50), 0 4px 16px -4px rgba(0, 0, 0, 0.25)',
-        'glass-hover-light': '0 12px 40px -12px rgba(0, 0, 0, 0.12), 0 8px 24px -8px rgba(0, 0, 0, 0.08)',
-        'glass-hover-dark': '0 12px 40px -12px rgba(0, 0, 0, 0.60), 0 8px 24px -8px rgba(0, 0, 0, 0.35)',
+        'glass-light': '0 12px 32px -18px rgba(15, 23, 42, 0.22), 0 0 18px -10px rgba(14, 165, 233, 0.16)',
+        'glass-dark': '0 12px 32px -18px rgba(0, 0, 0, 0.55), 0 0 18px -10px rgba(56, 189, 248, 0.28)',
+        'glass-hover-light': '0 18px 48px -22px rgba(15, 23, 42, 0.28), 0 0 22px -12px rgba(14, 165, 233, 0.18)',
+        'glass-hover-dark': '0 18px 48px -22px rgba(0, 0, 0, 0.62), 0 0 22px -12px rgba(56, 189, 248, 0.32)',
         'glass-glow-light': '0 0 0 1px rgba(14, 165, 233, 0.15), 0 0 20px -5px rgba(14, 165, 233, 0.25)',
         'glass-glow-dark': '0 0 0 1px rgba(56, 189, 248, 0.20), 0 0 20px -5px rgba(56, 189, 248, 0.35)',
         // 原有阴影保持兼容
