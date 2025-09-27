@@ -11,7 +11,7 @@ import (
 func TestGetSessionPersonaReturnsBoundPersona(t *testing.T) {
 	chatSvc := chatservice.NewService()
 	store := persona.NewMemoryStore(persona.Seed())
-	handler := New(nil, chatSvc, store)
+	handler := New(nil, nil, chatSvc, store)
 
 	ctx := context.Background()
 	session, err := chatSvc.CreateSession(ctx, "socrates")
@@ -32,7 +32,7 @@ func TestGetSessionPersonaReturnsBoundPersona(t *testing.T) {
 func TestGetSessionPersonaMissingPersona(t *testing.T) {
 	chatSvc := chatservice.NewService()
 	store := persona.NewMemoryStore(nil)
-	handler := New(nil, chatSvc, store)
+	handler := New(nil, nil, chatSvc, store)
 
 	ctx := context.Background()
 	session, err := chatSvc.CreateSession(ctx, "unknown")

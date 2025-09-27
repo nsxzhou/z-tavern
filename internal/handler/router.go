@@ -16,12 +16,13 @@ import (
 	personaModel "github.com/zhouzirui/z-tavern/backend/internal/model/persona"
 	aiService "github.com/zhouzirui/z-tavern/backend/internal/service/ai"
 	chatService "github.com/zhouzirui/z-tavern/backend/internal/service/chat"
+	emotionservice "github.com/zhouzirui/z-tavern/backend/internal/service/emotion"
 	speechService "github.com/zhouzirui/z-tavern/backend/internal/service/speech"
 	"github.com/zhouzirui/z-tavern/backend/pkg/utils"
 )
 
 // NewRouter wires HTTP routes to core services.
-func NewRouter(personas personaModel.Store, chatSvc *chatService.Service, aiSvc *aiService.Service, speechSvc *speechService.Service) http.Handler {
+func NewRouter(personas personaModel.Store, chatSvc *chatService.Service, aiSvc *aiService.Service, emotionSvc *emotionservice.Service, speechSvc *speechService.Service) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -37,7 +38,7 @@ func NewRouter(personas personaModel.Store, chatSvc *chatService.Service, aiSvc 
 	// Create stream handler for AI responses if AI service is available
 	var streamHandler *stream.Handler
 	if aiSvc != nil {
-		streamHandler = stream.New(aiSvc, chatSvc, personas)
+		streamHandler = stream.New(aiSvc, emotionSvc, chatSvc, personas)
 	}
 
 	r.Route("/api", func(api chi.Router) {
@@ -70,8 +71,8 @@ func NewRouter(personas personaModel.Store, chatSvc *chatService.Service, aiSvc 
 
 		// Register speech routes if speech service is available
 		if speechSvc != nil {
-			speechHandler := speech.New(speechSvc)
-			speechHandler.RegisterRoutes(api, aiSvc, chatSvc, personas)
+			speechHandler := speech.New(speechSvc, chatSvc, personas)
+			speechHandler.RegisterRoutes(api, aiSvc, emotionSvc, chatSvc, personas)
 		}
 	})
 
