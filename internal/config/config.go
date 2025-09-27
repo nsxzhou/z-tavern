@@ -64,16 +64,18 @@ func loadServerConfig() (ServerConfig, error) {
 
 // AIConfig 描述大模型相关配置。
 type AIConfig struct {
-	APIKey         string
-	AccessKey      string
-	SecretKey      string
-	Model          string
-	BaseURL        string
-	Region         string
-	Temperature    *float64
-	TopP           *float64
-	MaxTokens      *int
-	StreamResponse bool
+	APIKey              string
+	AccessKey           string
+	SecretKey           string
+	Model               string
+	BaseURL             string
+	Region              string
+	Temperature         *float64
+	TopP                *float64
+	MaxTokens           *int
+	StreamResponse      bool
+	EmotionLLMEnabled   bool
+	EmotionHistoryLimit int
 }
 
 // SpeechConfig 描述语音服务相关配置
@@ -160,17 +162,35 @@ func loadAIConfig() (AIConfig, error) {
 		return AIConfig{}, err
 	}
 
+	emotionEnabled, err := parseBoolEnv("AI_EMOTION_LLM_ENABLED", false)
+	if err != nil {
+		return AIConfig{}, err
+	}
+
+	emotionHistory := 6
+	if historyOverride, err := parseOptionalIntEnv("AI_EMOTION_HISTORY_LIMIT"); err != nil {
+		return AIConfig{}, err
+	} else if historyOverride != nil {
+		if *historyOverride < 1 {
+			emotionHistory = 1
+		} else {
+			emotionHistory = *historyOverride
+		}
+	}
+
 	return AIConfig{
-		APIKey:         strings.TrimSpace(os.Getenv("ARK_API_KEY")),
-		AccessKey:      strings.TrimSpace(os.Getenv("ARK_ACCESS_KEY")),
-		SecretKey:      strings.TrimSpace(os.Getenv("ARK_SECRET_KEY")),
-		Model:          strings.TrimSpace(os.Getenv("Model")),
-		BaseURL:        getEnvOrDefault("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
-		Region:         getEnvOrDefault("ARK_REGION", "cn-beijing"),
-		Temperature:    temperature,
-		TopP:           topP,
-		MaxTokens:      maxTokens,
-		StreamResponse: stream,
+		APIKey:              strings.TrimSpace(os.Getenv("ARK_API_KEY")),
+		AccessKey:           strings.TrimSpace(os.Getenv("ARK_ACCESS_KEY")),
+		SecretKey:           strings.TrimSpace(os.Getenv("ARK_SECRET_KEY")),
+		Model:               strings.TrimSpace(os.Getenv("Model")),
+		BaseURL:             getEnvOrDefault("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+		Region:              getEnvOrDefault("ARK_REGION", "cn-beijing"),
+		Temperature:         temperature,
+		TopP:                topP,
+		MaxTokens:           maxTokens,
+		StreamResponse:      stream,
+		EmotionLLMEnabled:   emotionEnabled,
+		EmotionHistoryLimit: emotionHistory,
 	}, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/joho/godotenv"
 	"github.com/zhouzirui/z-tavern/backend/internal/config"
 	"github.com/zhouzirui/z-tavern/backend/internal/handler"
@@ -17,6 +18,7 @@ import (
 	speechModel "github.com/zhouzirui/z-tavern/backend/internal/model/speech"
 	"github.com/zhouzirui/z-tavern/backend/internal/service/ai"
 	"github.com/zhouzirui/z-tavern/backend/internal/service/chat"
+	emotionservice "github.com/zhouzirui/z-tavern/backend/internal/service/emotion"
 	"github.com/zhouzirui/z-tavern/backend/internal/service/speech"
 )
 
@@ -53,6 +55,27 @@ func main() {
 		log.Println("Ark 凭证未配置，跳过 AI 功能初始化")
 	}
 
+	// Initialize emotion analysis service (LLM-based guidance with fallback)
+	emotionCfg := emotionservice.Config{
+		Enabled:      cfg.AI.EmotionLLMEnabled,
+		HistoryLimit: cfg.AI.EmotionHistoryLimit,
+	}
+	var chatModelForEmotion model.ChatModel
+	if aiService != nil {
+		chatModelForEmotion = aiService.GetChatModel()
+	}
+	emotionSvc, err := emotionservice.NewService(ctx, chatModelForEmotion, emotionCfg)
+	if err != nil {
+		log.Printf("warning: failed to initialize emotion service: %v", err)
+		emotionSvc = nil
+	} else if emotionSvc != nil && emotionSvc.Enabled() {
+		log.Println("Emotion classifier service enabled")
+	} else if emotionCfg.Enabled {
+		log.Println("Emotion classifier requested but chat model unavailable, falling back to heuristics")
+	} else {
+		log.Println("Emotion classifier disabled by configuration")
+	}
+
 	// Initialize Speech service
 	var speechService *speech.Service
 	if cfg.Speech.Enabled {
@@ -78,7 +101,7 @@ func main() {
 		log.Println("语音服务凭证未配置，跳过语音功能初始化")
 	}
 
-	router := handler.NewRouter(personaStore, chatService, aiService, speechService)
+	router := handler.NewRouter(personaStore, chatService, aiService, emotionSvc, speechService)
 
 	startServer(ctx, cfg.Server, router)
 }
