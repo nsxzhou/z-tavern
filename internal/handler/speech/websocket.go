@@ -18,26 +18,32 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 
+	"github.com/zhouzirui/z-tavern/backend/internal/analysis/emotion"
 	"github.com/zhouzirui/z-tavern/backend/internal/model/chat"
 	"github.com/zhouzirui/z-tavern/backend/internal/model/persona"
+	speechmodel "github.com/zhouzirui/z-tavern/backend/internal/model/speech"
 	"github.com/zhouzirui/z-tavern/backend/internal/service/ai"
 	chatservice "github.com/zhouzirui/z-tavern/backend/internal/service/chat"
+	emotionservice "github.com/zhouzirui/z-tavern/backend/internal/service/emotion"
+	speechsvc "github.com/zhouzirui/z-tavern/backend/internal/service/speech"
 )
 
 // WebSocketHandler WebSocket语音处理器
 type WebSocketHandler struct {
 	speechSvc    SpeechService
 	aiSvc        *ai.Service
+	emotionSvc   *emotionservice.Service
 	chatSvc      *chatservice.Service
 	personaStore persona.Store
 	upgrader     websocket.Upgrader
 }
 
 // NewWebSocketHandler 创建WebSocket处理器
-func NewWebSocketHandler(speechSvc SpeechService, aiSvc *ai.Service, chatSvc *chatservice.Service, personaStore persona.Store) *WebSocketHandler {
+func NewWebSocketHandler(speechSvc SpeechService, aiSvc *ai.Service, emotionSvc *emotionservice.Service, chatSvc *chatservice.Service, personaStore persona.Store) *WebSocketHandler {
 	return &WebSocketHandler{
 		speechSvc:    speechSvc,
 		aiSvc:        aiSvc,
+		emotionSvc:   emotionSvc,
 		chatSvc:      chatSvc,
 		personaStore: personaStore,
 		upgrader: websocket.Upgrader{
@@ -108,12 +114,17 @@ type connectionState struct {
 	buffer      bytes.Buffer
 }
 
-func newConnectionState(sessionID string, persona *persona.Persona) *connectionState {
+func newConnectionState(sessionID string, personaObj *persona.Persona) *connectionState {
+	voiceID := ""
+	if personaObj != nil {
+		voiceID = speechsvc.NormalizeVoiceAlias(personaObj.VoiceID)
+	}
+
 	state := &connectionState{
 		sessionID:  sessionID,
-		persona:    persona,
+		persona:    personaObj,
 		language:   "zh-CN",
-		voice:      persona.VoiceID,
+		voice:      voiceID,
 		asrEnabled: true,
 		ttsEnabled: true,
 		streamMode: true,
@@ -321,6 +332,7 @@ func (h *WebSocketHandler) processUserText(ctx context.Context, conn *websocket.
 	if err := h.chatSvc.SaveMessage(ctx, userMsg); err != nil {
 		return fmt.Errorf("save user message failed: %w", err)
 	}
+	updatedHistory := append(messages, userMsg)
 
 	h.sendInfo(conn, state.sessionID, map[string]any{
 		"type": "user",
@@ -331,26 +343,57 @@ func (h *WebSocketHandler) processUserText(ctx context.Context, conn *websocket.
 		return errors.New("ai service unavailable")
 	}
 
-	responseText, err := h.generateAIResponse(ctx, conn, state, messages, userText)
+	var promptGuidance *emotionservice.Guidance
+	if h.emotionSvc != nil && h.emotionSvc.Enabled() {
+		guidance := h.emotionSvc.Analyze(ctx, state.persona, updatedHistory, userText, "")
+		promptGuidance = &guidance
+	}
+
+	responseText, err := h.generateAIResponse(ctx, conn, state, updatedHistory, userText, promptGuidance)
 	if err != nil {
 		return err
 	}
 
-	assistantMsg := chat.Message{SessionID: state.sessionID, Sender: "assistant", Content: responseText}
+	var finalGuidance emotionservice.Guidance
+	if h.emotionSvc != nil {
+		finalGuidance = h.emotionSvc.Analyze(ctx, state.persona, append(updatedHistory, chat.Message{
+			SessionID: state.sessionID,
+			Sender:    "assistant",
+			Content:   responseText,
+		}), userText, responseText)
+	} else if promptGuidance != nil {
+		finalGuidance = *promptGuidance
+	} else {
+		finalGuidance = emotionservice.Guidance{Decision: emotion.Analyze(userText, responseText)}
+	}
+
+	assistantMsg := chat.Message{
+		SessionID: state.sessionID,
+		Sender:    "assistant",
+		Content:   responseText,
+		Emotion:   string(finalGuidance.Decision.Emotion),
+	}
 	if err := h.chatSvc.SaveMessage(ctx, assistantMsg); err != nil {
 		log.Printf("[websocket] save assistant message failed: %v", err)
 	}
 
+	h.sendInfo(conn, state.sessionID, map[string]any{
+		"type":       "emotion",
+		"emotion":    string(finalGuidance.Decision.Emotion),
+		"scale":      finalGuidance.Decision.Scale,
+		"confidence": finalGuidance.Confidence,
+	})
+
 	if state.ttsEnabled && responseText != "" {
-		h.sendTTS(ctx, conn, state, responseText)
+		h.sendTTS(ctx, conn, state, responseText, finalGuidance.Decision)
 	}
 
 	return nil
 }
 
-func (h *WebSocketHandler) generateAIResponse(ctx context.Context, conn *websocket.Conn, state *connectionState, history []chat.Message, userText string) (string, error) {
+func (h *WebSocketHandler) generateAIResponse(ctx context.Context, conn *websocket.Conn, state *connectionState, history []chat.Message, userText string, guidance *emotionservice.Guidance) (string, error) {
 	if !h.aiSvc.StreamingEnabled() {
-		resp, err := h.aiSvc.GenerateResponse(ctx, state.sessionID, state.persona, history, userText)
+		resp, err := h.aiSvc.GenerateResponse(ctx, state.sessionID, state.persona, history, userText, guidance)
 		if err != nil {
 			return "", fmt.Errorf("ai generation failed: %w", err)
 		}
@@ -363,7 +406,7 @@ func (h *WebSocketHandler) generateAIResponse(ctx context.Context, conn *websock
 		return text, nil
 	}
 
-	stream, err := h.aiSvc.StreamResponse(ctx, state.persona, history, userText)
+	stream, err := h.aiSvc.StreamResponse(ctx, state.persona, history, userText, guidance)
 	if err != nil {
 		return "", fmt.Errorf("ai streaming failed: %w", err)
 	}
@@ -405,8 +448,21 @@ func (h *WebSocketHandler) generateAIResponse(ctx context.Context, conn *websock
 	return text, nil
 }
 
-func (h *WebSocketHandler) sendTTS(ctx context.Context, conn *websocket.Conn, state *connectionState, text string) {
-	ttsResp, err := h.speechSvc.SynthesizeToBuffer(ctx, state.sessionID, text, state.voice, state.language)
+func (h *WebSocketHandler) sendTTS(ctx context.Context, conn *websocket.Conn, state *connectionState, text string, decision emotion.Decision) {
+	req := &speechmodel.TTSRequest{
+		SessionID: state.sessionID,
+		Text:      text,
+		Voice:     speechsvc.NormalizeVoiceAlias(state.voice),
+		Language:  state.language,
+	}
+
+	if enable, label, scale := speechsvc.ComputeEmotionParameters(req.Voice, decision); enable {
+		req.EnableEmotion = true
+		req.Emotion = label
+		req.EmotionScale = scale
+	}
+
+	ttsResp, err := h.speechSvc.SynthesizeToBuffer(ctx, req)
 	if err != nil {
 		log.Printf("[websocket] TTS failed: %v", err)
 		h.sendInfo(conn, state.sessionID, map[string]any{
@@ -421,13 +477,15 @@ func (h *WebSocketHandler) sendTTS(ctx context.Context, conn *websocket.Conn, st
 		return
 	}
 
-	log.Printf("[websocket] TTS sending audio session=%s bytes=%d format=%s", state.sessionID, len(ttsResp.AudioData), ttsResp.Format)
+	log.Printf("[websocket] TTS sending audio session=%s bytes=%d format=%s emotion=%s scale=%.1f", state.sessionID, len(ttsResp.AudioData), ttsResp.Format, req.Emotion, req.EmotionScale)
 	audioB64 := base64.StdEncoding.EncodeToString(ttsResp.AudioData)
 	h.sendInfo(conn, state.sessionID, map[string]any{
 		"type":      "tts",
 		"audioData": audioB64,
 		"format":    ttsResp.Format,
 		"isFinal":   true,
+		"emotion":   req.Emotion,
+		"scale":     req.EmotionScale,
 	})
 }
 
@@ -463,7 +521,7 @@ func (h *WebSocketHandler) applyConfig(state *connectionState, cfg ConfigMessage
 		state.language = cfg.Language
 	}
 	if cfg.Voice != "" {
-		state.voice = cfg.Voice
+		state.voice = speechsvc.NormalizeVoiceAlias(cfg.Voice)
 	}
 	if cfg.PersonaID != "" && state.persona != nil && cfg.PersonaID != state.persona.ID {
 		if persona, ok := h.personaStore.FindByID(cfg.PersonaID); ok {

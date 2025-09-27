@@ -330,14 +330,25 @@ func (c *VolcengineTTSClient) buildTTSRequest(req *speech.TTSRequest, speaker, e
 		ttsReq.ReqParams.Language = language
 	}
 
-	ttsReq.ReqParams.Additions = buildAdditionsPayload()
+	ttsReq.ReqParams.Additions = buildAdditionsPayload(req, speaker)
 
 	return ttsReq, userUID
 }
 
-func buildAdditionsPayload() string {
+func buildAdditionsPayload(req *speech.TTSRequest, speaker string) string {
 	additions := map[string]any{
 		"disable_markdown_filter": false,
+	}
+
+	if req != nil && supportsEmotion(speaker) {
+		emotionLabel := strings.TrimSpace(req.Emotion)
+		if req.EnableEmotion && emotionLabel != "" {
+			additions["enable_emotion"] = true
+			additions["emotion"] = emotionLabel
+			if req.EmotionScale > 0 {
+				additions["emotion_scale"] = req.EmotionScale
+			}
+		}
 	}
 
 	data, err := json.Marshal(additions)
@@ -390,12 +401,12 @@ func resolveTTSResourceCandidates(voice string) []string {
 
 func resolveTTSSpeakerCandidates(requested, fallback string) []string {
 	aliasMap := map[string]string{
-		"hogwarts-young-hero":                   "zh_male_M392_conversation_wvae_bigtts",
-		"athens-wise-mentor":                    "zh_male_M392_conversation_wvae_bigtts",
-		"stark-industries":                      "zh_male_M392_conversation_wvae_bigtts",
-		"tavern-guide":                          "zh_female_vv_venus_bigtts",
+		"hogwarts-young-hero":                   "zh_male_junlangnanyou_emo_v2_mars_bigtts",
+		"athens-wise-mentor":                    "zh_male_yourougongzi_emo_v2_mars_bigtts",
+		"stark-industries":                      "zh_male_aojiaobazong_emo_v2_mars_bigtts",
+		"tavern-guide":                          "zh_female_gaolengyujie_emo_v2_mars_bigtts",
 		"default":                               fallback,
-		"en_default":                            "en_female_amy_jupiter_bigtts",
+		"en_default":                            "en_male_glen_emo_v2_mars_bigtts",
 		"zh_female_vv_uranus_bigtts":            "zh_female_vv_uranus_bigtts",
 		"zh_male_m392_conversation":             "zh_male_M392_conversation_wvae_bigtts",
 		"zh_male_m392_conversation_wvae_bigtts": "zh_male_M392_conversation_wvae_bigtts",
@@ -427,6 +438,21 @@ func resolveTTSSpeakerCandidates(requested, fallback string) []string {
 	}
 
 	return candidates
+}
+
+// NormalizeVoiceAlias 将语音别名解析为实际可用的voice id。
+func NormalizeVoiceAlias(voice string) string {
+	voice = strings.TrimSpace(voice)
+	if voice == "" {
+		return ""
+	}
+
+	candidates := resolveTTSSpeakerCandidates(voice, voice)
+	if len(candidates) > 0 {
+		return candidates[0]
+	}
+
+	return voice
 }
 
 func isResourceMismatchError(err error) bool {

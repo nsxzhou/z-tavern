@@ -15,11 +15,14 @@ import (
 	speechmodel "github.com/zhouzirui/z-tavern/backend/internal/model/speech"
 	"github.com/zhouzirui/z-tavern/backend/internal/service/ai"
 	chatservice "github.com/zhouzirui/z-tavern/backend/internal/service/chat"
+	emotionservice "github.com/zhouzirui/z-tavern/backend/internal/service/emotion"
+	speechsvc "github.com/zhouzirui/z-tavern/backend/internal/service/speech"
 )
 
 type fakeSpeechService struct {
 	transcribeSession string
 	synthSession      string
+	synthVoice        string
 }
 
 func (f *fakeSpeechService) TranscribeAudio(ctx context.Context, req *speechmodel.ASRRequest) (*speechmodel.ASRResponse, error) {
@@ -29,6 +32,7 @@ func (f *fakeSpeechService) TranscribeAudio(ctx context.Context, req *speechmode
 
 func (f *fakeSpeechService) SynthesizeSpeech(ctx context.Context, req *speechmodel.TTSRequest) (*speechmodel.TTSResponse, error) {
 	f.synthSession = req.SessionID
+	f.synthVoice = req.Voice
 	return &speechmodel.TTSResponse{SessionID: req.SessionID, Format: "mp3"}, nil
 }
 
@@ -37,14 +41,15 @@ func (f *fakeSpeechService) TranscribeBuffer(ctx context.Context, sessionID stri
 	return &speechmodel.ASRResponse{SessionID: sessionID, Text: "ok"}, nil
 }
 
-func (f *fakeSpeechService) SynthesizeToBuffer(ctx context.Context, sessionID, text, voice, language string) (*speechmodel.TTSResponse, error) {
-	f.synthSession = sessionID
-	return &speechmodel.TTSResponse{SessionID: sessionID, AudioData: []byte("audio"), Format: "mp3"}, nil
+func (f *fakeSpeechService) SynthesizeToBuffer(ctx context.Context, req *speechmodel.TTSRequest) (*speechmodel.TTSResponse, error) {
+	f.synthSession = req.SessionID
+	f.synthVoice = req.Voice
+	return &speechmodel.TTSResponse{SessionID: req.SessionID, AudioData: []byte("audio"), Format: "mp3"}, nil
 }
 
 func TestProcessTranscribeOverridesSession(t *testing.T) {
 	fakeSvc := &fakeSpeechService{}
-	handler := New(fakeSvc)
+	handler := New(fakeSvc, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -75,7 +80,17 @@ func TestProcessTranscribeOverridesSession(t *testing.T) {
 
 func TestProcessSynthesizeOverridesSession(t *testing.T) {
 	fakeSvc := &fakeSpeechService{}
-	handler := New(fakeSvc)
+	chatSvc := chatservice.NewService()
+	personaStore := persona.NewMemoryStore([]persona.Persona{{
+		ID:      "wizard",
+		VoiceID: "hogwarts-young-hero",
+	}})
+	session, err := chatSvc.CreateSession(context.Background(), "wizard")
+	if err != nil {
+		t.Fatalf("CreateSession err: %v", err)
+	}
+
+	handler := New(fakeSvc, chatSvc, personaStore)
 
 	payload := map[string]any{"text": "hello"}
 	buf, err := json.Marshal(payload)
@@ -86,10 +101,15 @@ func TestProcessSynthesizeOverridesSession(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/speech/synthesize/test", bytes.NewReader(buf))
 	rr := httptest.NewRecorder()
 
-	handler.processSynthesize(rr, req, "session-override")
+	handler.processSynthesize(rr, req, session.ID)
 
-	if fakeSvc.synthSession != "session-override" {
+	if fakeSvc.synthSession != session.ID {
 		t.Fatalf("expected override session, got %s", fakeSvc.synthSession)
+	}
+
+	expectedVoice := speechsvc.NormalizeVoiceAlias("hogwarts-young-hero")
+	if fakeSvc.synthVoice != expectedVoice {
+		t.Fatalf("expected voice %s, got %s", expectedVoice, fakeSvc.synthVoice)
 	}
 	if rr.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", rr.Code)
@@ -97,9 +117,9 @@ func TestProcessSynthesizeOverridesSession(t *testing.T) {
 }
 
 func TestWebSocketFallbackWhenUnavailable(t *testing.T) {
-	handler := New(nil)
+	handler := New(nil, nil, nil)
 	r := chi.NewRouter()
-	handler.RegisterRoutes(r, nil, nil, nil)
+	handler.RegisterRoutes(r, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/speech/ws/abc", nil)
 	rr := httptest.NewRecorder()
@@ -112,13 +132,14 @@ func TestWebSocketFallbackWhenUnavailable(t *testing.T) {
 
 func TestWebSocketRegisteredWhenServicesPresent(t *testing.T) {
 	fakeSvc := &fakeSpeechService{}
-	handler := New(fakeSvc)
-	r := chi.NewRouter()
-	aiSvc := &ai.Service{}
 	chatSvc := chatservice.NewService()
 	personaStore := persona.NewMemoryStore(nil)
+	handler := New(fakeSvc, chatSvc, personaStore)
+	r := chi.NewRouter()
+	aiSvc := &ai.Service{}
+	emotionSvc := (*emotionservice.Service)(nil)
 
-	handler.RegisterRoutes(r, aiSvc, chatSvc, personaStore)
+	handler.RegisterRoutes(r, aiSvc, emotionSvc, chatSvc, personaStore)
 
 	req := httptest.NewRequest(http.MethodGet, "/speech/ws/abc", nil)
 	rr := httptest.NewRecorder()

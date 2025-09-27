@@ -6,6 +6,23 @@ import (
 	"testing"
 )
 
+func TestNormalizeVoiceAlias(t *testing.T) {
+	cases := []struct {
+		alias  string
+		expect string
+	}{
+		{alias: "hogwarts-young-hero", expect: "zh_male_junlangnanyou_emo_v2_mars_bigtts"},
+		{alias: "zh_male_junlangnanyou_emo_v2_mars_bigtts", expect: "zh_male_junlangnanyou_emo_v2_mars_bigtts"},
+		{alias: "", expect: ""},
+	}
+
+	for _, tc := range cases {
+		if got := NormalizeVoiceAlias(tc.alias); got != tc.expect {
+			t.Fatalf("NormalizeVoiceAlias(%s) = %s, want %s", tc.alias, got, tc.expect)
+		}
+	}
+}
+
 func TestResolveTTSResourceCandidates(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -71,7 +88,7 @@ func TestResolveTTSSpeakerCandidates(t *testing.T) {
 			name:     "persona alias",
 			request:  "hogwarts-young-hero",
 			fallback: "zh_male_M392_conversation_wvae_bigtts",
-			want:     []string{"zh_male_M392_conversation_wvae_bigtts"},
+			want:     []string{"zh_male_junlangnanyou_emo_v2_mars_bigtts", "zh_male_M392_conversation_wvae_bigtts"},
 		},
 	}
 

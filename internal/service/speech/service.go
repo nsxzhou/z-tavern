@@ -3,6 +3,7 @@ package speech
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/zhouzirui/z-tavern/backend/internal/model/speech"
@@ -64,15 +65,10 @@ func (s *Service) TranscribeBuffer(ctx context.Context, sessionID string, audioD
 }
 
 // SynthesizeToBuffer 文字转语音（返回字节数组）
-func (s *Service) SynthesizeToBuffer(ctx context.Context, sessionID, text, voice, language string) (*speech.TTSResponse, error) {
-	// 创建TTS请求
-	req := &speech.TTSRequest{
-		SessionID: sessionID,
-		Text:      text,
-		Voice:     voice,
-		Language:  language,
+func (s *Service) SynthesizeToBuffer(ctx context.Context, req *speech.TTSRequest) (*speech.TTSResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("tts request is nil")
 	}
-
 	return s.SynthesizeSpeech(ctx, req)
 }
 

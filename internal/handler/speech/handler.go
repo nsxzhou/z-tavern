@@ -15,6 +15,8 @@ import (
 	"github.com/zhouzirui/z-tavern/backend/internal/model/speech"
 	"github.com/zhouzirui/z-tavern/backend/internal/service/ai"
 	chatservice "github.com/zhouzirui/z-tavern/backend/internal/service/chat"
+	emotionservice "github.com/zhouzirui/z-tavern/backend/internal/service/emotion"
+	speechsvc "github.com/zhouzirui/z-tavern/backend/internal/service/speech"
 )
 
 // SpeechService 抽象语音业务，便于测试与替换实现
@@ -22,23 +24,27 @@ type SpeechService interface {
 	TranscribeAudio(rCtx context.Context, req *speech.ASRRequest) (*speech.ASRResponse, error)
 	SynthesizeSpeech(rCtx context.Context, req *speech.TTSRequest) (*speech.TTSResponse, error)
 	TranscribeBuffer(rCtx context.Context, sessionID string, audioData []byte, format, language string) (*speech.ASRResponse, error)
-	SynthesizeToBuffer(rCtx context.Context, sessionID, text, voice, language string) (*speech.TTSResponse, error)
+	SynthesizeToBuffer(rCtx context.Context, req *speech.TTSRequest) (*speech.TTSResponse, error)
 }
 
 // Handler 语音服务的HTTP处理器
 type Handler struct {
-	speechSvc SpeechService
+	speechSvc    SpeechService
+	chatSvc      *chatservice.Service
+	personaStore persona.Store
 }
 
 // New 创建语音处理器
-func New(speechSvc SpeechService) *Handler {
+func New(speechSvc SpeechService, chatSvc *chatservice.Service, personaStore persona.Store) *Handler {
 	return &Handler{
-		speechSvc: speechSvc,
+		speechSvc:    speechSvc,
+		chatSvc:      chatSvc,
+		personaStore: personaStore,
 	}
 }
 
 // RegisterRoutes 注册语音相关的路由
-func (h *Handler) RegisterRoutes(r chi.Router, aiSvc *ai.Service, chatSvc *chatservice.Service, personaStore persona.Store) {
+func (h *Handler) RegisterRoutes(r chi.Router, aiSvc *ai.Service, emotionSvc *emotionservice.Service, chatSvc *chatservice.Service, personaStore persona.Store) {
 	r.Route("/speech", func(speechRouter chi.Router) {
 		// ASR 端点
 		speechRouter.Post("/transcribe", h.handleTranscribe)
@@ -53,7 +59,7 @@ func (h *Handler) RegisterRoutes(r chi.Router, aiSvc *ai.Service, chatSvc *chats
 
 		// WebSocket端点 (如果实时语音链路可用)
 		if h.websocketAvailable(aiSvc, chatSvc, personaStore) {
-			wsHandler := NewWebSocketHandler(h.speechSvc, aiSvc, chatSvc, personaStore)
+			wsHandler := NewWebSocketHandler(h.speechSvc, aiSvc, emotionSvc, chatSvc, personaStore)
 			wsHandler.RegisterWebSocketRoutes(speechRouter)
 		} else {
 			speechRouter.Get("/ws/{sessionID}", func(w http.ResponseWriter, _ *http.Request) {
@@ -163,13 +169,19 @@ func (h *Handler) processSynthesize(w http.ResponseWriter, r *http.Request, over
 		req.SessionID = overrideSessionID
 	}
 
-	if req.Text == "" {
+	if strings.TrimSpace(req.Text) == "" {
 		h.respondError(w, http.StatusBadRequest, "text is required")
 		return
 	}
 
 	if req.SessionID == "" {
 		req.SessionID = "default"
+	}
+
+	if strings.TrimSpace(req.Voice) == "" {
+		if resolved := h.resolveVoiceFromContext(r.Context(), req.SessionID); resolved != "" {
+			req.Voice = resolved
+		}
 	}
 
 	resp, err := h.speechSvc.SynthesizeSpeech(r.Context(), &req)
@@ -194,6 +206,34 @@ func (h *Handler) processSynthesize(w http.ResponseWriter, r *http.Request, over
 	} else {
 		h.respondJSON(w, http.StatusOK, resp)
 	}
+}
+
+func (h *Handler) resolveVoiceFromContext(ctx context.Context, sessionID string) string {
+	if h.chatSvc == nil || h.personaStore == nil {
+		return ""
+	}
+
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return ""
+	}
+
+	session, err := h.chatSvc.GetSession(ctx, sessionID)
+	if err != nil {
+		return ""
+	}
+
+	personaID := strings.TrimSpace(session.PersonaID)
+	if personaID == "" {
+		return ""
+	}
+
+	personaObj, ok := h.personaStore.FindByID(personaID)
+	if !ok {
+		return ""
+	}
+
+	return speechsvc.NormalizeVoiceAlias(personaObj.VoiceID)
 }
 
 // handleHealth 健康检查端点

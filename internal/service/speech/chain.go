@@ -71,7 +71,12 @@ func (sc *SpeechChain) ProcessVoiceToVoice(ctx context.Context, input *VoiceToVo
 	}
 
 	// 步骤4: TTS - 文本转语音
-	ttsResp, err := sc.speechSvc.SynthesizeToBuffer(ctx, input.SessionID, aiResp.Content, "", input.Language)
+	req := &speech.TTSRequest{
+		SessionID: input.SessionID,
+		Text:      aiResp.Content,
+		Language:  input.Language,
+	}
+	ttsResp, err := sc.speechSvc.SynthesizeToBuffer(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("TTS failed: %w", err)
 	}
@@ -172,7 +177,12 @@ func (svp *StreamingVoiceProcessor) ProcessStreamingVoice(ctx context.Context, i
 				}
 
 				// TTS生成语音
-				ttsResp, err := svp.speechSvc.SynthesizeToBuffer(ctx, input.SessionID, aiResp.Content, "", input.Language)
+				req := &speech.TTSRequest{
+					SessionID: input.SessionID,
+					Text:      aiResp.Content,
+					Language:  input.Language,
+				}
+				ttsResp, err := svp.speechSvc.SynthesizeToBuffer(ctx, req)
 				if err != nil {
 					continue
 				}
