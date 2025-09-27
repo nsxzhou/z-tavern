@@ -36,7 +36,6 @@ const isPersona = (input: Partial<Persona>): input is Persona =>
       typeof input.name === 'string' &&
       typeof input.title === 'string' &&
       typeof input.tone === 'string' &&
-      typeof input.promptHint === 'string' &&
       (typeof input.openingLine === 'undefined' || typeof input.openingLine === 'string'),
   )
 

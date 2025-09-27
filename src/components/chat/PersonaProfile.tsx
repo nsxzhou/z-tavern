@@ -1,12 +1,11 @@
 import type { Persona } from '../../api'
-import { createPersonaFilterTags, getPersonaInitials, getPersonaPrompts } from '../../utils/persona'
+import { createPersonaFilterTags, getPersonaInitials } from '../../utils/persona'
 
 interface PersonaProfileProps {
   persona: Persona
 }
 
 export const PersonaProfile: React.FC<PersonaProfileProps> = ({ persona }) => {
-  const prompts = getPersonaPrompts(persona)
   const tags = createPersonaFilterTags([persona])
   const openingLine = persona.openingLine?.trim() || '欢迎来到 Z Tavern，开始对话吧。'
 
@@ -62,15 +61,6 @@ export const PersonaProfile: React.FC<PersonaProfileProps> = ({ persona }) => {
 
       {/* 详细信息网格 */}
       <div className="grid gap-4 text-sm flex-1">
-        {/* 角色提示 */}
-        <div className="glass-panel rounded-2xl p-4 backdrop-blur-glass backdrop-saturate-180 backdrop-brightness-108">
-          <p className="text-xs uppercase tracking-widest text-ztavern-text-secondary-light dark:text-ztavern-text-secondary-dark mb-2">
-            角色提示
-          </p>
-          <p className="text-sm leading-relaxed text-ztavern-text-light dark:text-ztavern-text-dark">
-            {persona.promptHint || '该角色暂无额外提示信息。'}
-          </p>
-        </div>
 
         {/* 风格标签 */}
         <div className="glass-panel rounded-2xl p-4 backdrop-blur-glass backdrop-saturate-180 backdrop-brightness-108">
@@ -91,33 +81,6 @@ export const PersonaProfile: React.FC<PersonaProfileProps> = ({ persona }) => {
               <span className="text-xs text-ztavern-muted-light dark:text-ztavern-muted-dark">
                 暂未提供标签
               </span>
-            )}
-          </div>
-        </div>
-
-        {/* 快速提示 */}
-        <div className="glass-panel rounded-2xl p-4 backdrop-blur-glass backdrop-saturate-180 backdrop-brightness-108 flex-1">
-          <p className="text-xs uppercase tracking-widest text-ztavern-text-secondary-light dark:text-ztavern-text-secondary-dark mb-3">
-            快速提示
-          </p>
-          <div className="space-y-2">
-            {prompts.length > 0 ? (
-              prompts.map((prompt, index) => (
-                <div
-                  key={prompt}
-                  className="flex items-start gap-2 group cursor-default"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-ztavern-accent-light/60 dark:bg-ztavern-accent-dark/60 transition-colors group-hover:bg-ztavern-accent-light dark:group-hover:bg-ztavern-accent-dark"></span>
-                  <p className="text-xs leading-relaxed text-ztavern-muted-light dark:text-ztavern-muted-dark group-hover:text-ztavern-text-light dark:group-hover:text-ztavern-text-dark transition-colors">
-                    {prompt}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-ztavern-muted-light dark:text-ztavern-muted-dark">
-                暂无提示语，可直接开始对话。
-              </p>
             )}
           </div>
         </div>

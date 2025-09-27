@@ -5,16 +5,6 @@ export const getPersonaInitials = (persona: Persona) => {
   return 'AI'
 }
 
-export const getPersonaPrompts = (persona: Persona): string[] => {
-  if (persona.promptHint) {
-    return persona.promptHint
-      .split(/[。！？!?]/)
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-      .slice(0, 4)
-  }
-  return []
-}
 
 export const createPersonaFilterTags = (personas: Persona[]) => {
   const tagSet = new Set<string>()

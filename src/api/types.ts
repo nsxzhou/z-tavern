@@ -3,7 +3,6 @@ export interface Persona {
   name: string
   title: string
   tone: string
-  promptHint: string
   openingLine?: string
   voiceId?: string
   traits?: string[]

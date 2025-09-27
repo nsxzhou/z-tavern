@@ -1,10 +1,8 @@
-import { useMemo } from 'react'
 import { PersonaSidebar } from './PersonaSidebar'
 import { ChatTimeline } from './ChatTimeline'
 import { ChatComposer } from './ChatComposer'
 import { PersonaProfile } from './PersonaProfile'
 import { useChatOrchestrator } from '../../hooks/useChatOrchestrator'
-import { getPersonaPrompts } from '../../utils/persona'
 
 export const ChatExperience: React.FC = () => {
   const {
@@ -32,11 +30,6 @@ export const ChatExperience: React.FC = () => {
     ttsLoadingMessageId,
     ttsPlayingMessageId,
   } = useChatOrchestrator()
-
-  const quickPrompts = useMemo(() => {
-    if (!activePersona) return []
-    return getPersonaPrompts(activePersona).slice(0, 3)
-  }, [activePersona])
 
   if (loading && personas.length === 0) {
     return (
@@ -67,7 +60,7 @@ export const ChatExperience: React.FC = () => {
   }
 
   return (
-    <section className="grid h-full min-h-0 gap-6 lg:grid-cols-[320px,1fr,320px]">
+    <section className="grid h-full min-h-0 gap-4 lg:grid-cols-[320px,1fr,320px]">
       <PersonaSidebar
         personas={personas}
         activePersonaId={activePersona.id}
@@ -108,7 +101,6 @@ export const ChatExperience: React.FC = () => {
           value={composerText}
           onChange={setComposerText}
           onSend={() => sendMessage(composerText)}
-          quickPrompts={quickPrompts}
           onPromptSelect={appendPrompt}
           onVoiceToggle={toggleVoiceInput}
           voiceState={voiceState}

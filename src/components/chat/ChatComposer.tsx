@@ -14,7 +14,6 @@ interface ChatComposerProps {
   onSend: () => void
   disabled?: boolean
   placeholder?: string
-  quickPrompts?: string[]
   onPromptSelect?: (prompt: string) => void
   onVoiceToggle?: () => void
   voiceState?: ComposerVoiceState
@@ -29,8 +28,6 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   onSend,
   disabled = false,
   placeholder = '输入你的想法或问题，按 Enter 发送',
-  quickPrompts,
-  onPromptSelect,
   onVoiceToggle,
   voiceState = 'idle',
   voiceError,
@@ -63,23 +60,6 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
   return (
     <div className="glass-panel rounded-2xl p-5 space-y-4 backdrop-blur-glass backdrop-saturate-180 backdrop-brightness-108 animate-glass-morph">
-      {quickPrompts && quickPrompts.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-ztavern-text-secondary-light dark:text-ztavern-text-secondary-dark mr-2">
-            快速提示:
-          </span>
-          {quickPrompts.map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => onPromptSelect?.(prompt)}
-              className="btn-glass text-xs px-3 py-1.5 rounded-full hover:scale-105 transition-all duration-200 ripple-effect"
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="relative group">
         <textarea

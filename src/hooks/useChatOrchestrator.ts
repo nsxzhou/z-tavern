@@ -12,7 +12,7 @@ import {
   type StreamEvent,
   type TTSRequest,
 } from "../api";
-import { createPersonaFilterTags, getPersonaPrompts } from "../utils/persona";
+import { createPersonaFilterTags } from "../utils/persona";
 
 export interface ConversationState {
   session?: Session;
@@ -52,7 +52,7 @@ type SpeechSocketOutgoingPayload =
       Extract<SpeechSocketOutgoingMessage, { type: "text" }>,
       "sessionId" | "timestamp"
     >)
-  | ({ type: "pong"; sessionId?: string });
+  | { type: "pong"; sessionId?: string };
 
 type ActiveStream = {
   source: EventSource;
@@ -201,9 +201,7 @@ const concatenateArrayBuffers = (chunks: ArrayBuffer[]): ArrayBuffer => {
 const createInitialConversations = (personas: Persona[]): ConversationMap => {
   return personas.reduce<ConversationMap>((acc, persona) => {
     const openingLine =
-      persona.openingLine ||
-      persona.promptHint ||
-      `${persona.name} 正在等待与你互动。`;
+      persona.openingLine || `${persona.name} 正在等待与你互动。`;
     const localId = `${persona.id}-intro`;
     acc[persona.id] = {
       isStreaming: false,
@@ -455,9 +453,12 @@ export const useChatOrchestrator = () => {
       const sessionId = payload.sessionId ?? speechSessionIdRef.current;
       if (!sessionId) {
         if (process.env.NODE_ENV !== "production") {
-          console.warn("[useChatOrchestrator] missing session id for WS payload", {
-            payloadType: payload.type,
-          });
+          console.warn(
+            "[useChatOrchestrator] missing session id for WS payload",
+            {
+              payloadType: payload.type,
+            }
+          );
         }
         return;
       }
@@ -706,14 +707,17 @@ export const useChatOrchestrator = () => {
         messageSessionId !== activeSessionId
       ) {
         if (process.env.NODE_ENV !== "production") {
-          console.warn("[useChatOrchestrator] ignore speech message (session mismatch)", {
-            personaId: persona.id,
-            messageSessionId,
-            activeSessionId,
-            messageType: message.type,
-            eventType:
-              message.type === "info" ? message.data?.type : undefined,
-          });
+          console.warn(
+            "[useChatOrchestrator] ignore speech message (session mismatch)",
+            {
+              personaId: persona.id,
+              messageSessionId,
+              activeSessionId,
+              messageType: message.type,
+              eventType:
+                message.type === "info" ? message.data?.type : undefined,
+            }
+          );
         }
         return;
       }
@@ -742,15 +746,15 @@ export const useChatOrchestrator = () => {
         const emotion = normalizeEmotion(emotionValue);
         const scale = normalizeEmotionScale(scaleValue);
         const confidence =
-          typeof confidenceValue === "number" && Number.isFinite(confidenceValue)
+          typeof confidenceValue === "number" &&
+          Number.isFinite(confidenceValue)
             ? Math.max(0, Math.min(1, confidenceValue))
             : undefined;
         if (!emotion && scale === undefined && confidence === undefined) return;
         const snapshot = conversationsRef.current[persona.id];
         const nextEmotion = emotion ?? snapshot?.lastEmotion;
         const nextScale = scale ?? snapshot?.lastEmotionScale;
-        const nextConfidence =
-          confidence ?? snapshot?.lastEmotionConfidence;
+        const nextConfidence = confidence ?? snapshot?.lastEmotionConfidence;
         updateConversation(persona.id, {
           lastEmotion: nextEmotion,
           lastEmotionScale: nextScale,
@@ -872,7 +876,7 @@ export const useChatOrchestrator = () => {
           applyEmotionUpdate(
             data.emotion,
             data.emotionScale ?? data.scale,
-            data.emotionConfidence ?? data.confidence,
+            data.emotionConfidence ?? data.confidence
           );
           break;
         }
@@ -922,7 +926,7 @@ export const useChatOrchestrator = () => {
           applyEmotionUpdate(
             data.emotion,
             data.emotionScale ?? data.scale,
-            data.emotionConfidence ?? data.confidence,
+            data.emotionConfidence ?? data.confidence
           );
           break;
         }
@@ -1127,11 +1131,7 @@ export const useChatOrchestrator = () => {
 
   const deliverFallbackResponse = useCallback(
     (persona: Persona) => {
-      const prompts = getPersonaPrompts(persona);
-      const fallbackText =
-        prompts[Math.floor(Math.random() * prompts.length)] ??
-        persona.promptHint ??
-        `${persona.name} 正在思考你的问题……`;
+      const fallbackText = `${persona.name} 正在思考你的问题……`;
       const timestamp = Date.now();
       const localId = `fallback-${timestamp}`;
       pushMessage(persona.id, {
@@ -1227,16 +1227,15 @@ export const useChatOrchestrator = () => {
           const payload =
             parsePayload(event.content) ?? parsePayload(event.message) ?? null;
 
-          const rawEmotion =
-            (payload?.emotion ?? event.emotion) as unknown | undefined;
-          const rawScale =
-            (payload?.emotionScale ?? payload?.scale ?? event.emotionScale) as
-              | unknown
-              | undefined;
-          const rawConfidence =
-            (payload?.confidence ?? payload?.emotionConfidence ?? event.emotionConfidence) as
-              | unknown
-              | undefined;
+          const rawEmotion = (payload?.emotion ?? event.emotion) as
+            | unknown
+            | undefined;
+          const rawScale = (payload?.emotionScale ??
+            payload?.scale ??
+            event.emotionScale) as unknown | undefined;
+          const rawConfidence = (payload?.confidence ??
+            payload?.emotionConfidence ??
+            event.emotionConfidence) as unknown | undefined;
 
           const emotion =
             typeof rawEmotion === "string" && rawEmotion.trim().length > 0
@@ -1254,8 +1253,7 @@ export const useChatOrchestrator = () => {
           if (emotion || scale !== undefined || confidence !== undefined) {
             const conversationSnapshot = conversationsRef.current[persona.id];
             const nextEmotion = emotion ?? conversationSnapshot?.lastEmotion;
-            const nextScale =
-              scale ?? conversationSnapshot?.lastEmotionScale;
+            const nextScale = scale ?? conversationSnapshot?.lastEmotionScale;
             const nextConfidence =
               confidence ?? conversationSnapshot?.lastEmotionConfidence;
             updateConversation(persona.id, {
@@ -1667,7 +1665,8 @@ export const useChatOrchestrator = () => {
               ? emotion.trim()
               : undefined;
           const normalizedEmotionScale =
-            typeof rawEmotionScale === "number" && Number.isFinite(rawEmotionScale)
+            typeof rawEmotionScale === "number" &&
+            Number.isFinite(rawEmotionScale)
               ? Math.max(1, Math.min(5, rawEmotionScale))
               : undefined;
 
