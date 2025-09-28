@@ -269,6 +269,7 @@ export const useChatOrchestrator = () => {
   const partialTranscriptRef = useRef<string>("");
   const latestFinalTranscriptRef = useRef<string>("");
   const markFinalChunkRef = useRef(false);
+  const audioReplyPendingRef = useRef(false);
   const speechAssistantMessageRef = useRef<Record<string, string | undefined>>(
     {}
   );
@@ -426,6 +427,7 @@ export const useChatOrchestrator = () => {
       speechAssistantMessageRef.current = {};
       speechSessionIdRef.current = null;
       partialTranscriptRef.current = "";
+      audioReplyPendingRef.current = false;
       if (!options?.silent) {
         setSpeechStatusMessage(options?.reason ?? "语音服务未连接");
         setSpeechStatusTone(options?.reason ? "error" : "info");
@@ -516,6 +518,9 @@ export const useChatOrchestrator = () => {
           : null;
         const audioData = wavBuffer ? arrayBufferToBase64(wavBuffer) : "";
         const chunkIndex = speechChunkIndexRef.current++;
+        if (options.isFinal) {
+          audioReplyPendingRef.current = true;
+        }
         const payload: SpeechSocketOutgoingPayload = {
           type: "audio",
           sessionId,
@@ -810,7 +815,7 @@ export const useChatOrchestrator = () => {
             latestFinalTranscriptRef.current = transcript;
             setVoiceState("streaming");
             const session = conversationsRef.current[persona.id]?.session;
-            if (session) {
+            if (session && !audioReplyPendingRef.current) {
               sendSpeechMessage({
                 type: "text",
                 sessionId: session.id,
@@ -832,6 +837,7 @@ export const useChatOrchestrator = () => {
               createdAt: new Date(timestamp).toISOString(),
             });
             speechAssistantMessageRef.current[persona.id] = undefined;
+            audioReplyPendingRef.current = false;
           }
           break;
         }
@@ -1503,6 +1509,7 @@ export const useChatOrchestrator = () => {
       partialTranscriptRef.current = "";
       latestFinalTranscriptRef.current = "";
       markFinalChunkRef.current = false;
+      audioReplyPendingRef.current = false;
 
       try {
         await setupAudioProcessing(stream);
@@ -1556,6 +1563,7 @@ export const useChatOrchestrator = () => {
 
         if (speechModeRef.current === "ws") {
           if (markFinalChunkRef.current || speechChunkIndexRef.current > 0) {
+            audioReplyPendingRef.current = true;
             sendAudioChunk(null, { isFinal: true });
           }
           markFinalChunkRef.current = false;
